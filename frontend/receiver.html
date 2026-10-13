@@ -1,55 +1,80 @@
+
 <!DOCTYPE html>
 <html>
 <head>
-
     <title>Emergency Contact</title>
 
-    <style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+    <style>
         body {
             font-family: Arial, sans-serif;
             text-align: center;
-            margin-top: 50px;
+            margin: 40px 15px;
+            background: #f7f7f7;
         }
 
         .alert-box {
-            width: 350px;
+            box-sizing: border-box;
+            width: 100%;
+            max-width: 420px;
             margin: 20px auto;
-            padding: 20px;
+            padding: 22px;
             border: 2px solid #d32f2f;
-            border-radius: 10px;
+            border-radius: 12px;
             text-align: left;
             display: none;
+            background: white;
         }
 
         .alert-box h2 {
             text-align: center;
+            color: #c62828;
         }
 
         .info {
-            margin: 10px 0;
+            margin: 14px 0;
+            overflow-wrap: anywhere;
+        }
+
+        .location-link {
+            display: inline-block;
+            margin-top: 10px;
+            color: #1565c0;
+            font-weight: bold;
         }
 
         button {
             padding: 12px 25px;
             font-size: 18px;
             cursor: pointer;
+            border: none;
+            border-radius: 8px;
+            background: #c62828;
+            color: white;
         }
 
-    </style>
+        button:disabled {
+            background: #888;
+            cursor: not-allowed;
+        }
 
+        #gpsStatus {
+            font-weight: bold;
+        }
+
+        #remoteAudio {
+            display: block;
+            margin: 20px auto;
+        }
+    </style>
 </head>
 
 <body>
 
 <h1>Emergency Contact</h1>
 
-<h2 id="status">
-    Waiting for emergency call...
-</h2>
-
-
-<!-- Emergency information -->
+<h2 id="status">Waiting for emergency call...</h2>
 
 <div id="alertBox" class="alert-box">
 
@@ -66,8 +91,39 @@
     </div>
 
     <div class="info">
+        <strong>GPS status:</strong>
+        <span id="gpsStatus">Waiting for location data</span>
+    </div>
+
+    <div class="info">
+        <strong>Latitude:</strong>
+        <span id="latitude">Unavailable</span>
+    </div>
+
+    <div class="info">
+        <strong>Longitude:</strong>
+        <span id="longitude">Unavailable</span>
+    </div>
+
+    <div class="info">
         <strong>Location:</strong>
-        <span id="patientLocation">-</span>
+        <span id="patientLocation">GPS location unavailable</span>
+    </div>
+
+    <a
+        id="mapsLink"
+        class="location-link"
+        href="#"
+        target="_blank"
+        rel="noopener noreferrer"
+        style="display:none;"
+    >
+        📍 Open location in Google Maps
+    </a>
+
+    <div class="info">
+        <strong>Registered location:</strong>
+        <span id="registeredLocation">-</span>
     </div>
 
     <div class="info">
@@ -77,251 +133,216 @@
 
 </div>
 
-
-<button onclick="answerCall()">
+<button id="answerButton" onclick="answerCall()">
     ANSWER
 </button>
 
-
-<audio id="remoteAudio" autoplay></audio>
-
+<audio id="remoteAudio" autoplay controls></audio>
 
 <script>
+const protocol = window.location.protocol === "https:" ? "wss://" : "ws://";
 
 const ws = new WebSocket(
-    "ws://" + window.location.host + "/ws"
+    protocol + window.location.host + "/ws"
 );
 
 let peerConnection;
 let incomingOffer = null;
+let pendingCandidates = [];
 
+ws.onopen = () => {
+    console.log("WebSocket connected.");
+};
 
-/*
-============================================================
-WEBSOCKET MESSAGE HANDLER
-============================================================
-*/
+ws.onclose = () => {
+    console.log("WebSocket disconnected.");
+    document.getElementById("status").innerText =
+        "Connection lost. Please refresh the page.";
+};
+
+ws.onerror = (error) => {
+    console.error("WebSocket error:", error);
+};
 
 ws.onmessage = async (event) => {
+    let message;
 
-    const message = JSON.parse(event.data);
+    try {
+        message = JSON.parse(event.data);
+    } catch (error) {
+        console.error("Invalid WebSocket message:", error);
+        return;
+    }
 
-
-    /*
-    --------------------------------------------------------
-    FALL DETECTED
-    --------------------------------------------------------
-    */
-
+    // FALL DETECTED
     if (message.type === "fall_detected") {
+        console.log("🚨 FALL ALERT RECEIVED", message);
 
-        console.log(
-            "🚨 FALL ALERT RECEIVED"
-        );
+        document.getElementById("alertBox").style.display = "block";
 
-        console.log(
-            "Patient:",
-            message.name
-        );
+        document.getElementById("patientName").innerText =
+            message.name || "Unknown";
 
-        console.log(
-            "Location:",
-            message.location
-        );
+        document.getElementById("patientId").innerText =
+            message.user_id || "Unknown";
 
+        document.getElementById("patientLanguage").innerText =
+            message.language || "Unknown";
 
-        // Show emergency information
+        document.getElementById("registeredLocation").innerText =
+            message.registered_location || "Not provided";
 
-        document.getElementById(
-            "alertBox"
-        ).style.display = "block";
+        const lat = Number(message.latitude);
+        const lng = Number(message.longitude);
 
+        const validCoordinates =
+            message.gps_valid === true &&
+            message.latitude !== null &&
+            message.longitude !== null &&
+            Number.isFinite(lat) &&
+            Number.isFinite(lng) &&
+            lat >= -90 && lat <= 90 &&
+            lng >= -180 && lng <= 180;
 
-        document.getElementById(
-            "patientName"
-        ).innerText = message.name;
+        const mapsLink = document.getElementById("mapsLink");
 
+        if (validCoordinates) {
+            document.getElementById("gpsStatus").innerText =
+                "✅ Valid GPS coordinates received";
 
-        document.getElementById(
-            "patientId"
-        ).innerText = message.user_id;
+            document.getElementById("latitude").innerText =
+                lat.toFixed(6);
 
+            document.getElementById("longitude").innerText =
+                lng.toFixed(6);
 
-        document.getElementById(
-            "patientLocation"
-        ).innerText = message.location;
+            document.getElementById("patientLocation").innerText =
+                `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
 
+            mapsLink.href =
+                `https://www.google.com/maps?q=${lat},${lng}`;
 
-        document.getElementById(
-            "patientLanguage"
-        ).innerText = message.language;
+            mapsLink.style.display = "inline-block";
+        } else {
+            document.getElementById("gpsStatus").innerText =
+                "⚠️ No valid GPS fix";
 
+            document.getElementById("latitude").innerText =
+                "Unavailable";
 
-        document.getElementById(
-            "status"
-        ).innerText =
-            "🚨 INCOMING EMERGENCY CALL";
+            document.getElementById("longitude").innerText =
+                "Unavailable";
 
-    }
+            document.getElementById("patientLocation").innerText =
+                "GPS location unavailable";
 
-
-    /*
-    --------------------------------------------------------
-    INCOMING WEBRTC OFFER
-    --------------------------------------------------------
-    */
-
-    if (message.type === "offer") {
-
-        incomingOffer = message.offer;
-
-        document.getElementById(
-            "status"
-        ).innerText =
-            "🚨 INCOMING EMERGENCY CALL";
-
-    }
-
-
-    /*
-    --------------------------------------------------------
-    ICE CANDIDATE
-    --------------------------------------------------------
-    */
-
-    if (message.type === "candidate") {
-
-        if (peerConnection) {
-
-            await peerConnection.addIceCandidate(
-                message.candidate
-            );
-
+            mapsLink.removeAttribute("href");
+            mapsLink.style.display = "none";
         }
 
+        document.getElementById("status").innerText =
+            "🚨 INCOMING EMERGENCY CALL";
     }
 
+    // INCOMING WEBRTC OFFER
+    if (message.type === "offer") {
+        incomingOffer = message.offer;
+
+        document.getElementById("status").innerText =
+            "🚨 INCOMING EMERGENCY CALL";
+
+        document.getElementById("answerButton").disabled = false;
+    }
+
+    // WEBRTC ANSWER
+    if (message.type === "answer" && peerConnection) {
+        // The receiver normally sends the answer, so this is not
+        // needed for the usual receiver flow.
+        console.log("Received answer message.");
+    }
+
+    // ICE CANDIDATE
+    if (message.type === "candidate") {
+        try {
+            if (peerConnection && peerConnection.remoteDescription) {
+                await peerConnection.addIceCandidate(message.candidate);
+            } else {
+                pendingCandidates.push(message.candidate);
+            }
+        } catch (error) {
+            console.error("Could not add ICE candidate:", error);
+        }
+    }
 };
 
 
-/*
-============================================================
-ANSWER EMERGENCY CALL
-============================================================
-*/
-
+// ANSWER EMERGENCY CALL
 async function answerCall() {
+    if (!incomingOffer) {
+        alert("No incoming call offer yet. Wait for the caller to start the call.");
+        return;
+    }
 
-    peerConnection =
-        new RTCPeerConnection();
+    if (peerConnection) {
+        peerConnection.close();
+    }
 
+    document.getElementById("answerButton").disabled = true;
 
-    /*
-    --------------------------------------------------------
-    SEND ICE CANDIDATES
-    --------------------------------------------------------
-    */
+    try {
+        peerConnection = new RTCPeerConnection();
 
-    peerConnection.onicecandidate =
-        (event) => {
-
-            if (event.candidate) {
-
-                ws.send(
-                    JSON.stringify({
-
-                        type: "candidate",
-
-                        candidate:
-                            event.candidate
-
-                    })
-                );
-
+        peerConnection.onicecandidate = (event) => {
+            if (event.candidate && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: "candidate",
+                    candidate: event.candidate
+                }));
             }
-
         };
 
+        peerConnection.ontrack = (event) => {
+            const remoteAudio = document.getElementById("remoteAudio");
+            remoteAudio.srcObject = event.streams[0];
 
-    /*
-    --------------------------------------------------------
-    RECEIVE EMERGENCY AUDIO
-    --------------------------------------------------------
-    */
-
-    peerConnection.ontrack =
-        (event) => {
-
-            document.getElementById(
-                "remoteAudio"
-            ).srcObject =
-                event.streams[0];
-
+            remoteAudio.play().catch(error => {
+                console.log("Tap play on the audio player if needed.", error);
+            });
         };
 
+        await peerConnection.setRemoteDescription(
+            new RTCSessionDescription(incomingOffer)
+        );
 
-    /*
-    --------------------------------------------------------
-    SET CALL OFFER
-    --------------------------------------------------------
-    */
+        for (const candidate of pendingCandidates) {
+            await peerConnection.addIceCandidate(candidate);
+        }
+        pendingCandidates = [];
 
-    await peerConnection.setRemoteDescription(
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
 
-        new RTCSessionDescription(
-            incomingOffer
-        )
+        if (ws.readyState !== WebSocket.OPEN) {
+            throw new Error("WebSocket connection is not open.");
+        }
 
-    );
-
-
-    /*
-    --------------------------------------------------------
-    CREATE ANSWER
-    --------------------------------------------------------
-    */
-
-    const answer =
-        await peerConnection.createAnswer();
-
-
-    await peerConnection.setLocalDescription(
-        answer
-    );
-
-
-    /*
-    --------------------------------------------------------
-    SEND ANSWER BACK TO CALLER
-    --------------------------------------------------------
-    */
-
-    ws.send(
-
-        JSON.stringify({
-
+        ws.send(JSON.stringify({
             type: "answer",
-
             answer: answer
+        }));
 
-        })
+        document.getElementById("status").innerText =
+            "📞 CONNECTED TO EMERGENCY CALL";
 
-    );
+    } catch (error) {
+        console.error("Could not answer the call:", error);
 
+        document.getElementById("status").innerText =
+            "Unable to connect. Please try again.";
 
-    /*
-    --------------------------------------------------------
-    UPDATE STATUS
-    --------------------------------------------------------
-    */
-
-    document.getElementById(
-        "status"
-    ).innerText =
-        "📞 CONNECTED TO EMERGENCY CALL";
-
+        document.getElementById("answerButton").disabled = false;
+    }
 }
-
 </script>
 
 </body>
