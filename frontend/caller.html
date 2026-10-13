@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Emergency Caller</title>
+</head>
+
+<body>
+
+<h1>Emergency Caller</h1>
+
+<button onclick="startCall()">START EMERGENCY CALL</button>
+
+<p id="status">Not connected</p>
+
+<audio id="emergencyAudio" src="/static/audio/emergency_tamil.mp3"></audio>
+
+<script>
+
+const ws = new WebSocket(
+    "ws://" + window.location.host + "/ws"
+);
+
+let peerConnection;
+let audioStream;
+
+ws.onopen = () => {
+
+    document.getElementById("status").innerText =
+        "Connected to emergency server";
+
+};
+
+
+ws.onmessage = async (event) => {
+
+    const message = JSON.parse(event.data);
+    if (message.type === "fall_detected") {
+
+    console.log("🚨 FALL DETECTED MESSAGE RECEIVED");
+
+    startEmergencyCountdown();
+}
+
+    if (message.type === "answer") {
+
+        await peerConnection.setRemoteDescription(
+            new RTCSessionDescription(message.answer)
+        );
+
+        document.getElementById("status").innerText =
+            "CONNECTED - Emergency call active";
+
+        // Play emergency message after connection
+        const emergencyAudio =
+            document.getElementById("emergencyAudio");
+
+        emergencyAudio.currentTime = 0;
+        await emergencyAudio.play();
+
+    }
+
+    if (message.type === "candidate") {
+
+        if (peerConnection) {
+
+            await peerConnection.addIceCandidate(
+                message.candidate
+            );
+
+        }
+
+    }
+
+};
+
+let countdownTimer;
+
+function startEmergencyCountdown() {
+
+    let seconds = 10;
+
+    document.getElementById("status").innerHTML = `
+        🚨 FALL DETECTED!<br><br>
+        Emergency call in <span id="countdown">${seconds}</span> seconds
+        <br><br>
+        <button onclick="cancelEmergency()">CANCEL EMERGENCY</button>
+    `;
+
+    countdownTimer = setInterval(async () => {
+
+        seconds--;
+
+        const countdown =
+            document.getElementById("countdown");
+
+        if (countdown) {
+            countdown.innerText = seconds;
+        }
+
+        if (seconds <= 0) {
+
+            clearInterval(countdownTimer);
+
+            document.getElementById("status").innerText =
+                "📞 Calling trusted contact...";
+
+            await startCall();
+        }
+
+    }, 1000);
+}
+
+
+function cancelEmergency() {
+
+    clearInterval(countdownTimer);
+
+    document.getElementById("status").innerText =
+        "Emergency cancelled.";
+
+    console.log("Emergency call cancelled by user.");
+}
+
+async function startCall() {
+
+    document.getElementById("status").innerText =
+        "Starting emergency call...";
+
+    peerConnection = new RTCPeerConnection();
+
+
+    peerConnection.onicecandidate = (event) => {
+
+        if (event.candidate) {
+
+            ws.send(JSON.stringify({
+                type: "candidate",
+                candidate: event.candidate
+            }));
+
+        }
+
+    };
+
+
+    // Get microphone
+audioStream =
+    await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: false
+    });
+
+
+// Add microphone to WebRTC
+audioStream.getTracks().forEach(track => {
+
+    peerConnection.addTrack(
+        track,
+        audioStream
+    );
+
+});
+
+
+// Prepare emergency audio
+const emergencyAudio =
+    document.getElementById("emergencyAudio");
+
+const audioContext =
+    new AudioContext();
+
+const audioSource =
+    audioContext.createMediaElementSource(
+        emergencyAudio
+    );
+
+const audioDestination =
+    audioContext.createMediaStreamDestination();
+
+audioSource.connect(audioDestination);
+
+
+// Send emergency audio through WebRTC
+audioDestination.stream
+    .getAudioTracks()
+    .forEach(track => {
+
+        peerConnection.addTrack(
+            track,
+            audioDestination.stream
+        );
+
+    });
+
+
+    // Create emergency call
+    const offer =
+        await peerConnection.createOffer();
+
+    await peerConnection.setLocalDescription(offer);
+
+
+    ws.send(JSON.stringify({
+
+        type: "offer",
+        offer: offer
+
+    }));
+
+
+    document.getElementById("status").innerText =
+        "Calling...";
+
+}
+
+</script>
+
+</body>
+</html>
