@@ -1,0 +1,162 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fall Detection | User Registration</title>
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 24px;
+            font-family: Arial, sans-serif;
+            background: #f4f7fb;
+            color: #253247;
+        }
+
+        .card {
+            width: 100%;
+            max-width: 460px;
+            background: white;
+            padding: 30px;
+            border-radius: 18px;
+            box-shadow: 0 8px 30px rgba(0,0,0,.08);
+        }
+
+        h1 { margin-top: 0; font-size: 25px; }
+        .subtitle { color: #64748b; line-height: 1.5; }
+
+        label {
+            display: block;
+            margin-top: 17px;
+            margin-bottom: 7px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 9px;
+            font-size: 15px;
+            background: white;
+        }
+
+        button {
+            width: 100%;
+            margin-top: 24px;
+            padding: 13px;
+            border: 0;
+            border-radius: 9px;
+            background: #176b58;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:disabled { opacity: .6; cursor: wait; }
+
+        #message {
+            margin-top: 16px;
+            line-height: 1.5;
+            overflow-wrap: anywhere;
+        }
+
+        .success { color: #167448; }
+        .error { color: #b42318; }
+    </style>
+</head>
+<body>
+    <main class="card">
+        <h1>User Registration</h1>
+        <p class="subtitle">
+            Register your details and emergency contact preferences
+            for the wearable fall detection system.
+        </p>
+
+        <form id="registrationForm">
+            <label for="user_id">User ID</label>
+            <input id="user_id" name="user_id"
+                   placeholder="e.g. U003" required maxlength="30">
+
+            <label for="name">Full name</label>
+            <input id="name" name="name"
+                   placeholder="Enter your name" required maxlength="100">
+
+            <label for="phone">Emergency contact number</label>
+            <input id="phone" name="phone" type="tel"
+                   placeholder="Enter contact number" required
+                   minlength="7" maxlength="20">
+
+            <label for="language">Emergency voice language</label>
+            <select id="language" name="language" required>
+                <option value="">Select a language</option>
+                <option value="Tamil">Tamil</option>
+                <option value="English">English</option>
+                <option value="Hindi">Hindi</option>
+                <option value="Telugu">Telugu</option>
+                <option value="Malayalam">Malayalam</option>
+            </select>
+
+            <label for="location">Registered location (optional)</label>
+            <input id="location" name="location"
+                   placeholder="e.g. Vellore, Tamil Nadu">
+
+            <button id="submitButton" type="submit">
+                Register
+            </button>
+        </form>
+
+        <div id="message" role="status" aria-live="polite"></div>
+    </main>
+
+    <script>
+        const form = document.getElementById("registrationForm");
+        const message = document.getElementById("message");
+        const button = document.getElementById("submitButton");
+
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            message.textContent = "";
+            message.className = "";
+            button.disabled = true;
+
+            const data = Object.fromEntries(new FormData(form).entries());
+
+            try {
+                const response = await fetch("/register", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.detail || "Registration failed.");
+                }
+
+                message.className = "success";
+                message.textContent =
+                    `Registration successful! Welcome, ${result.user.name}. ` +
+                    `Your User ID is ${result.user.user_id}.`;
+
+                form.reset();
+            } catch (error) {
+                message.className = "error";
+                message.textContent = error.message;
+            } finally {
+                button.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

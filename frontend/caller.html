@@ -34,12 +34,47 @@ ws.onopen = () => {
 ws.onmessage = async (event) => {
 
     const message = JSON.parse(event.data);
-    if (message.type === "fall_detected") {
-
+    
+if (message.type === "fall_detected") {
     console.log("🚨 FALL DETECTED MESSAGE RECEIVED");
+
+    try {
+        const response = await fetch("/generate-audio", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                user_id: message.user_id
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error("Audio generation failed");
+        }
+
+        const result = await response.json();
+
+        const emergencyAudio =
+            document.getElementById("emergencyAudio");
+
+        emergencyAudio.src =
+            result.audio_url + "?t=" + Date.now();
+
+        emergencyAudio.load();
+
+        console.log(
+            "Emergency audio generated in:",
+            result.language
+        );
+    } catch (error) {
+        console.error(error);
+        console.log("Using the existing emergency audio as fallback.");
+    }
 
     startEmergencyCountdown();
 }
+
 
     if (message.type === "answer") {
 

@@ -91,6 +91,11 @@
     </div>
 
     <div class="info">
+        <strong>Emergency contact:</strong>
+        <span id="patientPhone">-</span>
+    </div>
+
+    <div class="info">
         <strong>GPS status:</strong>
         <span id="gpsStatus">Waiting for location data</span>
     </div>
@@ -185,6 +190,9 @@ ws.onmessage = async (event) => {
 
         document.getElementById("patientId").innerText =
             message.user_id || "Unknown";
+
+        document.getElementById("patientPhone").innerText =
+            message.phone || "Not registered";
 
         document.getElementById("patientLanguage").innerText =
             message.language || "Unknown";
